@@ -3,4 +3,4 @@ Scraps Hotel Utah's music schedule and sends me text message notification with a
 
 ![](images/hotel_utah_home.png?raw=true)
 
-![](images/txt_notification.png?raw=true)
+![](images/txt_notification.PNG?raw=true)
