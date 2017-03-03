@@ -13,4 +13,12 @@ def getArtistLink(artist):
     sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
     sp.trace = False
     results = sp.search(q='artist:{}'.format(artist), type='artist')
-    return results['artists']['items'][0]['external_urls'].values()[0]
+    try:
+        exact_match = False
+        all_artists = results['artists']['items']
+        for artist_data in all_artists:
+            if artist_data['name'] == artist:
+                return artist_data['external_urls'].values()[0]
+        return 'No Results Found on Spotify'
+    except IndexError:
+        return 'No Results Found on Spotify'
