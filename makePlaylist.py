@@ -11,5 +11,7 @@ def makePlaylist(playlist_name, username):
         sp.trace = False
         playlists = sp.user_playlist_create(username, playlist_name)
         pprint.pprint(playlists)
+        return playlists
+
     else:
         print("Can't get token for", username)
