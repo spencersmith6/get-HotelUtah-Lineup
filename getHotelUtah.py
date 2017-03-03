@@ -4,18 +4,19 @@ import urllib
 from twilio.rest import TwilioRestClient
 import csv
 import sys
+import json
 
 
-with open(sys.argv[1], 'r') as f:
-    credentials = f.readline().split(',')
+def getTwilioCreds(file_name):
+    with open(file_name, 'r') as f:
+        credentials = f.read()
+    return json.loads(credentials)
 
-print credentials[1]
-print credentials
+credentials = getTwilioCreds(sys.argv[1])
 
 SITE = 'http://www.hotelutah.com/'
 r = urllib.urlopen(SITE).read()
 soup = BeautifulSoup(r)
-
 
 sched = [i for i in soup.find_all('div', class_="list-view-item")]
 
@@ -26,14 +27,14 @@ for i in sched:
     schedule_list.append( (date, [event[x].get_text() for x in range(len(event )) ] ))
 
 tmp = [x[0] + ':\n' + '\n'.join([i for i in x[1]]) for x in schedule_list]
-text = '\n\n'.join(tmp)
+text = '\n\n'.join(tmp) + '\n' + SITE
 
 # the following line needs your Twilio Account SID and Auth Token
-client = TwilioRestClient(credentials[0], credentials[1])
+client = TwilioRestClient(credentials['sid'], credentials['twilio_token'])
 
 # change the "from_" number to your Twilio number and the "to" number
 # to the phone number you signed up for Twilio with, or upgrade your
 # account to send SMS to any phone number
-client.messages.create(to=credentials[2], from_=credentials[3],
+client.messages.create(to=credentials['your_phone#'], from_=credentials['twilio_phone#'],
                        body=text)
 
