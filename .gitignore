@@ -1,2 +1,4 @@
 .idea/*
 twilio_credentials.txt
+*.pyc
+.cache*
