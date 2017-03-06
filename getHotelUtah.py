@@ -37,6 +37,27 @@ def sendText(credentials, text):
     client.messages.create(to=credentials['your_phone#'], from_=credentials['twilio_phone#'],
                            body=text)
 
+def getArtistLink(artist):
+    """
+    Given an artist name, return the open.spotify link to their Spotify artist page
+    :param artist: The artist name, i.e. "Anderson .Paak"
+    :type artist: str
+    :return: The open.spotify url
+    """
+    client_credentials_manager = SpotifyClientCredentials()
+    sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+    sp.trace = False
+    results = sp.search(q='artist:{}'.format(artist), type='artist')
+    try:
+        exact_match = False
+        all_artists = results['artists']['items']
+        for artist_data in all_artists:
+            if artist_data['name'] == artist:
+                return artist_data['external_urls'].values()[0]
+        return 'No Results Found on Spotify'
+    except IndexError:
+        return 'No Results Found on Spotify'
+
 
 def getSched():
     """
@@ -75,6 +96,13 @@ def getArtists(sched_raw):
 
 
 def get_artistID(artist, results):
+    '''
+    :param artist:
+    :param results:
+    :return: Searches the results (search results) for a perfect text match of the artist.
+    Returns the artist uri if match is found.
+    Otherwise returns None
+    '''
     artist_uri = None
     for i in results['artists']['items']:
         if i['name'].lower() == artist:
@@ -83,6 +111,12 @@ def get_artistID(artist, results):
 
 
 def create_playlist(username):
+    '''
+    :param username:
+    :return: Creates a playlist in the account of the given user name.
+    Adds the top 5 songs of the artists playing in Hotel Utahs upcoming show.
+    Returns the link to the playlist.
+    '''
     scope = 'playlist-modify-public'
     token = util.prompt_for_user_token(username, scope)
     sp = spotipy.Spotify(auth = token)
@@ -124,7 +158,7 @@ def buildText(artists, dates, playlist_link):
 
 def main(args):
 
-    USERNAME = 'spencersmith6'
+    USERNAME = args.user_name
 
     creds = getCredentials(args.twil)
     sched_raw = getSched()
@@ -138,6 +172,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-twil", help="Twilio Credentials Filepath")
+    parser.add_argument("-user_name", help="Twilio Credentials Filepath")
     args = parser.parse_args()
     main(args)
 
