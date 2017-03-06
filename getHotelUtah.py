@@ -1,3 +1,11 @@
+"""
+This script builds Spotify playlists for the upcomign shows at Hotel Utah (http://www.hotelutah.com/)
+Playlist URIs can be passed as arguments, one for daily and one for weekly playlists, which will cause the playlists
+    to be overwritten with the most up to date artists
+The script will also send a text via Twilio containing the upcoming lineups as well as links to the
+    daily/weekly playlists
+"""
+
 from bs4 import BeautifulSoup
 import urllib
 from twilio.rest import TwilioRestClient
@@ -49,7 +57,6 @@ def getArtistLink(artist):
     sp.trace = False
     results = sp.search(q='artist:{}'.format(artist), type='artist')
     try:
-        exact_match = False
         all_artists = results['artists']['items']
         for artist_data in all_artists:
             if artist_data['name'] == artist:
@@ -61,7 +68,7 @@ def getArtistLink(artist):
 
 def getSched():
     """
-    This function gets the schedule from Hotel Utah
+    This function gets the schedule from Hotel Utah Website
     :return sched: The "schedule" in raw HTML format
     """
     SITE = 'http://www.hotelutah.com/'
@@ -86,13 +93,12 @@ def getArtists(sched_raw):
     for i in sched_raw:
         event = i.find_all('h1')
         date= i.find_all('h2', class_='dates')[0].get_text()
-        schedule_list.append( (date, [event[x].get_text() for x in range(len(event )) ] ))
+        schedule_list.append((date, [event[x].get_text() for x in range(len(event )) ] ))
 
     artists = [i[1] for i in schedule_list]
     dates = [i[0] for i in schedule_list]
 
     return dates, artists
-
 
 
 def get_artistID(artist, results):
@@ -110,37 +116,54 @@ def get_artistID(artist, results):
     return artist_uri
 
 
-def create_playlist(username, playlist_uri = None):
-    '''
-    :param username:
-    :return: Creates a playlist in the account of the given user name.
+def create_playlist(username, artists, playlist_uri = None, type="daily"):
+    """
+    Creates a playlist in the account of the given user name.
     Adds the top 5 songs of the artists playing in Hotel Utahs upcoming show.
-    Returns the link to the playlist.
-    '''
+    :param username: The username URI
+    :type username: str
+    :param playlist_uri: The Spotify playist URI, if there is one to be reaplced
+    :return: Links to the daily and weekly playlists.
+    """
+
+    if type not in ['daily', 'weekly']:
+        print "The parameter 'type' must be either 'daily' or 'weekly'"
+        return None
     scope = 'playlist-modify-public'
     token = util.prompt_for_user_token(username, scope)
-    sp = spotipy.Spotify(auth = token)
-    sp.trace=False
+    sp = spotipy.Spotify(auth=token)
+    sp.trace = False
 
-    sched_raw = getSched()
-    dates, artists = getArtists(sched_raw)
-    songs_to_add = build_song_list(artists, sp)
+    if type == 'daily':
+        songs_to_add = build_song_list(artists[0], sp)
+    else:
+        songs_to_add = build_song_list([item for sublist in artists for item in sublist], sp)
 
-    if playlist_uri ==None:
-        playlist_results = sp.user_playlist_create(username, 'Hotel Utah Tonight')
-        print playlist_results
+    if playlist_uri is None:
+        if type == 'daily':
+            playlist_results = sp.user_playlist_create(username, 'Hotel Utah Tonight')
+        else:
+            playlist_results = sp.user_playlist_create(username, 'Hotel Utah This Week')
+
+        sp.user_playlist_add_tracks(username, playlist_results['uri'].split(':')[-1], songs_to_add)
 
     else:
         playlist_results = sp.user_playlist_replace_tracks(username, playlist_uri, songs_to_add)
-        print playlist_results
 
-    sp.user_playlist_add_tracks(username, playlist_results['uri'].split(':')[-1], songs_to_add)
     return playlist_results['external_urls'].values()[0]
 
 
 def build_song_list(artists, sp):
+    """
+    THis function builds the list of top 5 songs from a given list of artists
+    :param artists: List of artists
+    :type artists: List
+    :param sp: Spotify Session
+    :type sp: Spotipy.Spotify()
+    :return songs_to_add: List of Spotify URIs
+    """
     songs_to_add = []
-    for artist in artists[0]:
+    for artist in artists:
         artist = re.sub('\(closing set\)', '', artist.lower())
         results = sp.search(q='artist:' + artist, type='artist')
         artist_uri = get_artistID(artist, results)
@@ -150,9 +173,7 @@ def build_song_list(artists, sp):
     return songs_to_add
 
 
-
-
-def buildText(artists, dates, playlist_link):
+def buildText(artists, dates, daily_playlist_link, weekly_playlist_link):
     """
     This function builds the text to be sent containing the upcoming shows and Spotify links
     :param artists: The list of lists of artists as returned by getArtists()
@@ -163,21 +184,26 @@ def buildText(artists, dates, playlist_link):
     :type playlist_links: List
     :return: The text to be sent out
     """
-    return '{}\n\n{}'.format('\n\n'.join(
-        ["{}:\n{}".format(dates[i], '\n'.join([j for j in artists[i]]))for i in range(len(dates))]), playlist_link)
+    return "{}\n\nTonight's Playlist: {}\n Weekly Playlist: {}".format(
+        '\n\n'.join(["{}:\n{}".format(dates[i], '\n'.join([j for j in artists[i]]))for i in range(len(dates))]),
+        daily_playlist_link,
+        weekly_playlist_link)
+
 
 
 
 def main(args):
-
     USERNAME = args.user_name
-    current_playlist= '18Erws30stoHDl4aSfFVXU'
+    DAILY_PLAYLIST = args.daily_playlist_uri
+    WEEKLY_PLAYLIST = args.weekly_playlist_uri
 
     creds = getCredentials(args.twil)
     sched_raw = getSched()
     dates, artists = getArtists(sched_raw)
-    playlist_link = create_playlist(USERNAME)
-    txt = buildText(artists, dates, playlist_link)
+
+    daily_playlist_link = create_playlist(USERNAME, artists, playlist_uri=DAILY_PLAYLIST, type='daily')
+    weekly_playlist_link = create_playlist(USERNAME, artists, playlist_uri=WEEKLY_PLAYLIST, type='weekly')
+    txt = buildText(artists, dates, daily_playlist_link, weekly_playlist_link)
     sendText(creds, txt)
     print 'TEXT SENT'
 
@@ -185,9 +211,10 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-twil", help="Twilio Credentials Filepath")
-    parser.add_argument("-user_name", help="Twilio Credentials Filepath")
+    parser.add_argument("-user_name", help="Spotify Username/ID")
+    parser.add_argument('--daily_playlist_uri',
+                        help="The Spotify playlist URI. If provided, the songs here will be overwritten with tonights artists")
+    parser.add_argument('--weekly_playlist_uri',
+                        help="The Spotify playlist URI. If provided, the songs here will be overwritten with this weeks artists")
     args = parser.parse_args()
     main(args)
-
-
-
