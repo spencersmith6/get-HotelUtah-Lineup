@@ -1,10 +1,11 @@
 from bs4 import BeautifulSoup
 import urllib
 from twilio.rest import TwilioRestClient
-from getArtistLinks import getArtistLink
 import argparse
 import json
-
+import spotipy
+import spotipy.util as util
+import re
 
 def getCredentials(file_name):
     """
@@ -72,7 +73,40 @@ def getArtists(sched_raw):
     return dates, artists
 
 
-def buildText(artists, dates, playlist_links):
+
+def get_artistID(artist, results):
+    artist_uri = None
+    for i in results['artists']['items']:
+        if i['name'].lower() == artist:
+            artist_uri = i['uri']
+    return artist_uri
+
+
+def create_playlist(username):
+    scope = 'playlist-modify-public'
+    token = util.prompt_for_user_token(username, scope)
+    sp = spotipy.Spotify(auth = token)
+    sp.trace=False
+
+    playlist_results = sp.user_playlist_create(username, 'Hotel Utah Tonight')
+
+    sched_raw = getSched()
+    dates, artists = getArtists(sched_raw)
+
+    songs_to_add = []
+    for artist in artists[0]:
+        artist = re.sub('\(closing set\)', '', artist.lower())
+        results = sp.search(q='artist:' + artist, type='artist')
+        artist_uri = get_artistID(artist, results)
+        if artist_uri != None:
+            response = sp.artist_top_tracks(artist_uri)
+            [songs_to_add.append(track['uri'].split(':')[2]) for track in response['tracks'][:5]]
+
+    sp.user_playlist_add_tracks(username, playlist_results['uri'].split(':')[-1], songs_to_add)
+    return playlist_results['external_urls'].values()[0]
+
+
+def buildText(artists, dates, playlist_link):
     """
     This function builds the text to be sent containing the upcoming shows and Spotify links
     :param artists: The list of lists of artists as returned by getArtists()
@@ -84,15 +118,19 @@ def buildText(artists, dates, playlist_links):
     :return: The text to be sent out
     """
     return '{}\n\n{}'.format('\n\n'.join(
-        ["{}:\n{}".format(
-            dates[i], '\n'.join(['{}\t{}'.format(j, getArtistLink(j)) for j in artists[i]]))
-         for i in range(len(dates))]), playlist_link)
+        ["{}:\n{}".format(dates[i], '\n'.join([j for j in artists[i]]))for i in range(len(dates))]), playlist_link)
+
+
 
 def main(args):
+
+    USERNAME = 'spencersmith6'
+
     creds = getCredentials(args.twil)
     sched_raw = getSched()
-    dates, artists, artists_flat = getArtists(sched_raw)
-    txt = buildText(artists, dates, 'THIS IS WHERE THE PLAYLIST GOES')
+    dates, artists = getArtists(sched_raw)
+    playlist_link = create_playlist(USERNAME)
+    txt = buildText(artists, dates, playlist_link)
     sendText(creds, txt)
     print 'TEXT SENT'
 
