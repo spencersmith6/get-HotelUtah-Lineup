@@ -110,7 +110,7 @@ def get_artistID(artist, results):
     return artist_uri
 
 
-def create_playlist(username):
+def create_playlist(username, playlist_uri = None):
     '''
     :param username:
     :return: Creates a playlist in the account of the given user name.
@@ -122,11 +122,23 @@ def create_playlist(username):
     sp = spotipy.Spotify(auth = token)
     sp.trace=False
 
-    playlist_results = sp.user_playlist_create(username, 'Hotel Utah Tonight')
-
     sched_raw = getSched()
     dates, artists = getArtists(sched_raw)
+    songs_to_add = build_song_list(artists, sp)
 
+    if playlist_uri ==None:
+        playlist_results = sp.user_playlist_create(username, 'Hotel Utah Tonight')
+        print playlist_results
+
+    else:
+        playlist_results = sp.user_playlist_replace_tracks(username, playlist_uri, songs_to_add)
+        print playlist_results
+
+    sp.user_playlist_add_tracks(username, playlist_results['uri'].split(':')[-1], songs_to_add)
+    return playlist_results['external_urls'].values()[0]
+
+
+def build_song_list(artists, sp):
     songs_to_add = []
     for artist in artists[0]:
         artist = re.sub('\(closing set\)', '', artist.lower())
@@ -135,9 +147,9 @@ def create_playlist(username):
         if artist_uri != None:
             response = sp.artist_top_tracks(artist_uri)
             [songs_to_add.append(track['uri'].split(':')[2]) for track in response['tracks'][:5]]
+    return songs_to_add
 
-    sp.user_playlist_add_tracks(username, playlist_results['uri'].split(':')[-1], songs_to_add)
-    return playlist_results['external_urls'].values()[0]
+
 
 
 def buildText(artists, dates, playlist_link):
@@ -159,6 +171,7 @@ def buildText(artists, dates, playlist_link):
 def main(args):
 
     USERNAME = args.user_name
+    current_playlist= '18Erws30stoHDl4aSfFVXU'
 
     creds = getCredentials(args.twil)
     sched_raw = getSched()
