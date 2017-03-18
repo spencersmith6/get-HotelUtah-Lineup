@@ -44,6 +44,8 @@ def sendText(credentials, text):
     # account to send SMS to any phone number
     client.messages.create(to=credentials['your_phone#'], from_=credentials['twilio_phone#'],
                            body=text)
+    print 'TEXT SENT'
+
 
 def getArtistLink(artist):
     """
@@ -101,7 +103,7 @@ def getArtists(sched_raw):
     return dates, artists
 
 
-def get_artistID(artist, results):
+def get_artistID(artist_0, sp):
     '''
     :param artist:
     :param results:
@@ -109,11 +111,22 @@ def get_artistID(artist, results):
     Returns the artist uri if match is found.
     Otherwise returns None
     '''
-    artist_uri = None
-    for i in results['artists']['items']:
-        if i['name'].lower() == artist:
-            artist_uri = i['uri']
-    return artist_uri
+
+    artist_1 = re.sub(r'\([^)]*\)', '', artist_0)
+    artist_2 = re.sub('band', '', artist_1.lower()).strip(" ")
+
+    results_0 = sp.search(q='artist:' + artist_0, type='artist')
+    results_1 = sp.search(q='artist:' + artist_1, type='artist')
+    results_2 = sp.search(q='artist:' + artist_2, type='artist')
+
+
+    for results, artist in [(results_0, artist_0), (results_1, artist_1), (results_2, artist_2)]:
+        for i in results['artists']['items']:
+            if i['name'].lower() == artist.lower():
+                artist_uri = i['uri']
+                return artist_uri
+
+    return None
 
 
 def create_playlist(username, artists, playlist_uri = None, type="daily"):
@@ -136,21 +149,29 @@ def create_playlist(username, artists, playlist_uri = None, type="daily"):
 
     if type == 'daily':
         songs_to_add = build_song_list(artists[0], sp)
+        print artists[0]
     else:
         songs_to_add = build_song_list([item for sublist in artists for item in sublist], sp)
+
+    if len(songs_to_add) == 0:
+        print "empty playlist"
+        return None
 
     if playlist_uri is None:
         if type == 'daily':
             playlist_results = sp.user_playlist_create(username, 'Hotel Utah Tonight')
+            playlist_link = playlist_results['external_urls'].values()[0]
         else:
             playlist_results = sp.user_playlist_create(username, 'Hotel Utah This Week')
+            playlist_link = playlist_results['external_urls'].values()[0]
 
         sp.user_playlist_add_tracks(username, playlist_results['uri'].split(':')[-1], songs_to_add)
 
     else:
         playlist_results = sp.user_playlist_replace_tracks(username, playlist_uri, songs_to_add)
+        playlist_link = 'http://open.spotify.com/user/spencersmith6/playlist/' + playlist_uri
 
-    return playlist_results['external_urls'].values()[0]
+    return playlist_link
 
 
 def build_song_list(artists, sp):
@@ -164,16 +185,16 @@ def build_song_list(artists, sp):
     """
     songs_to_add = []
     for artist in artists:
-        artist = re.sub('\(closing set\)', '', artist.lower())
-        results = sp.search(q='artist:' + artist, type='artist')
-        artist_uri = get_artistID(artist, results)
+        artist_uri = get_artistID(artist, sp)
+        print artist_uri
         if artist_uri != None:
             response = sp.artist_top_tracks(artist_uri)
             [songs_to_add.append(track['uri'].split(':')[2]) for track in response['tracks'][:5]]
+        else: print "No Artists Found."
     return songs_to_add
 
 
-def buildText(artists, dates, daily_playlist_link, weekly_playlist_link):
+def buildText(artists, dates, daily_playlist_link, weekly_playlist_link= None):
     """
     This function builds the text to be sent containing the upcoming shows and Spotify links
     :param artists: The list of lists of artists as returned by getArtists()
@@ -184,10 +205,10 @@ def buildText(artists, dates, daily_playlist_link, weekly_playlist_link):
     :type playlist_links: List
     :return: The text to be sent out
     """
-    return "{}\n\nTonight's Playlist: {}\n Weekly Playlist: {}".format(
+    return "{}\n\nTonight's Playlist: \n{}".format(
         '\n\n'.join(["{}:\n{}".format(dates[i], '\n'.join([j for j in artists[i]]))for i in range(len(dates))]),
-        daily_playlist_link,
-        weekly_playlist_link)
+        daily_playlist_link) \
+        #   + "\n Weekly Playlist: {}".format(weekly_playlist_link)
 
 
 
@@ -196,16 +217,16 @@ def main(args):
     USERNAME = args.user_name
     DAILY_PLAYLIST = args.daily_playlist_uri
     WEEKLY_PLAYLIST = args.weekly_playlist_uri
+    DAILY_PLAYLIST = '5NN7PVBtBxVpyveuLQs1yH'
 
     creds = getCredentials(args.twil)
     sched_raw = getSched()
     dates, artists = getArtists(sched_raw)
 
     daily_playlist_link = create_playlist(USERNAME, artists, playlist_uri=DAILY_PLAYLIST, type='daily')
-    weekly_playlist_link = create_playlist(USERNAME, artists, playlist_uri=WEEKLY_PLAYLIST, type='weekly')
-    txt = buildText(artists, dates, daily_playlist_link, weekly_playlist_link)
+    #weekly_playlist_link = create_playlist(USERNAME, artists, playlist_uri=WEEKLY_PLAYLIST, type='weekly')
+    txt = buildText(artists, dates, daily_playlist_link)
     sendText(creds, txt)
-    print 'TEXT SENT'
 
 
 if __name__ == '__main__':
